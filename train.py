@@ -187,7 +187,6 @@ def main(model_name, torch_dtype, fp8, train_dataset, checkpoint_folder, max_che
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optim.step()
         scheduler.step()
-        optim.zero_grad(set_to_none=True)
 
         if step % log_interval == 0:
             scalar_dict = {
