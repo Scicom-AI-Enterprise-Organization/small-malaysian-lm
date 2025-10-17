@@ -11,5 +11,6 @@ uv pip install datasets
 uv pip install wandb
 uv pip install pandas pyarrow
 uv pip install multiprocess
+uv pip install transformer_engine[pytorch] --no-build-isolation
 FLASH_ATTENTION_SKIP_CUDA_BUILD="TRUE" uv pip install flash-attn==2.8.3 --no-build-isolation
 ipython kernel install --user --name=small-malaysian-lm

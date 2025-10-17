@@ -1,4 +1,4 @@
-# small-malaysian-lm
+# small-malaysian-lm-5090
 
 We want to compare how good Qwen3-0.6B-Base to continue pretraining on Malaysian multi-lingual corpus on different mixed precision training with proper truncated multi-packing.
 
@@ -18,8 +18,9 @@ We want to compare,
 
 ## Hyperparameters
 
-1. 100k token batch size.
+1. 131072 token batch size.
 2. 100 warmup with 2e-5 learning rate.
 3. AdamW optimizer.
 4. Because we are using 5090s, we are only able to do BF16 Flash Attention 2 v2.8.3 out of the box for now.
-5. Single GPU, feel free to add DDP by your own.
+5. https://github.com/apple/ml-cross-entropy Kahan summation FP32.
+6. Single GPU, feel free to add DDP by your own.
