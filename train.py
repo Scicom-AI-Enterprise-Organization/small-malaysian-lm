@@ -177,9 +177,9 @@ def main(model_name, torch_dtype, fp8, train_dataset, checkpoint_folder, max_che
             with autocast(dtype=torch.bfloat16, enabled=True):
                 if fp8:
                     with te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe):
-                        out = model(**batch)
+                        out = model(**b)
                 else:
-                    out = model(**batch)
+                    out = model(**b)
             
             loss = out["loss"] / grad_accumulation
             loss.backward()
