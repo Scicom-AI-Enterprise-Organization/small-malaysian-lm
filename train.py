@@ -1,9 +1,13 @@
+import torch
+
+torch._dynamo.config.recompile_limit = 64
+torch._dynamo.config.allow_unspec_int_on_nn_module = True
+
 import json
 import os
 import time
 from glob import glob
 from types import MethodType
-import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
@@ -279,6 +283,7 @@ def main(
         train_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
+        prefetch_factor=10,
         pin_memory=True,
         collate_fn=collator,
     )
@@ -339,7 +344,7 @@ def main(
         t1 = time.time()
         dt = t1 - t0
 
-        throughput_per_sec = len(batches) * 4096 / dt
+        throughput_per_sec = len(batches) * batch_size * 4096 / dt
         flops_per_sec = num_flops_per_token * throughput_per_sec
         mfu = 100 * flops_per_sec / device_flops
 
