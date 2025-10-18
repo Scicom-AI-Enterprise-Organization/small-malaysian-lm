@@ -2,9 +2,12 @@ import json
 import os
 import time
 from glob import glob
+from types import MethodType
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
+from torch.nn.attention.flex_attention import create_block_mask
 from torch.utils.data import Dataset, DataLoader
 from transformer_engine import pytorch as te
 from transformer_engine.common import recipe
@@ -48,6 +51,36 @@ def convert_model(model):
         else:
             convert_model(module)
 
+def causal_mask(b, h, q_idx, kv_idx):
+    return q_idx >= kv_idx
+
+def _offsets_to_doc_ids_tensor(offsets):
+    device = offsets.device
+    offsets = offsets[offsets != -1]
+    counts = offsets[1:] - offsets[:-1]
+    return torch.repeat_interleave(
+        torch.arange(len(counts), device=device, dtype=torch.int32), counts
+    )
+
+def length_to_offsets(lengths, device):
+    offsets = [0]
+    offsets.extend(lengths)
+    offsets = torch.tensor(offsets, device=device, dtype=torch.int32)
+    offsets = torch.cumsum(offsets, dim=-1)
+    return offsets
+
+def generate_doc_mask_mod(offsets):
+    
+    offsets = pad_sequence(offsets, batch_first = True, padding_value = -1)
+    docs = [_offsets_to_doc_ids_tensor(offsets[i]) for i in range(offsets.shape[0])]
+    docs = torch.stack(docs, 0)
+    
+    def document_causal_mask(b, h, q_idx, kv_idx):
+        causal_mask = q_idx >= kv_idx
+        document_mask = docs[b, q_idx] == docs[b, kv_idx]
+        return causal_mask & document_mask
+    
+    return document_causal_mask
 
 class Model(Qwen3ForCausalLM):
     def __init__(self, config):
@@ -65,6 +98,16 @@ class Model(Qwen3ForCausalLM):
         return num_flops_per_token
         
     def forward(self, input_ids, attention_mask=None, position_ids=None, labels=None, num_items_in_batch=None, **kwargs):
+        if self.config._attn_implementation == 'flex_attention':
+            attention_mask = kwargs.pop('cu_seq_lens_q')
+            kwargs.pop('cu_seq_lens_k')
+            kwargs.pop('max_length_q')
+            kwargs.pop('max_length_k')
+            seq_len = position_ids.shape[-1]
+            device = position_ids.device
+            document_causal_mask = generate_doc_mask_mod(attention_mask[None])
+            attention_mask = create_block_mask(
+                document_causal_mask, None, None, seq_len, seq_len, device, _compile = True)
         super_out = self.model.forward(
             input_ids = input_ids, 
             position_ids = position_ids, 
@@ -102,7 +145,7 @@ class UInt32(Encoding):
 _encodings['uint32'] = UInt32
 
 class Dataset(Dataset):
-    def __init__(self, folder):
+    def __init__(self, folder, flex_attention=False):
         self.dataset = LocalDataset(local=folder)
     
     def __getitem__(self, idx):
@@ -132,7 +175,7 @@ def collator(batch):
     max_cumsum = int(np.max(cumsum))
     cu_seq_lens_q = torch.tensor(cumsum, dtype=torch.int32)
     cu_seq_lens_k = torch.tensor(cumsum, dtype=torch.int32)
-    max_seqlen_q = torch.tensor(np.max(query_lens))
+    max_seqlen_q = int(np.max(query_lens))
     return {
         'input_ids': torch.tensor(input_ids)[None],
         'position_ids': torch.tensor(position_ids)[None],
@@ -145,8 +188,9 @@ def collator(batch):
 
 @click.option('--model-name', default='Qwen3-0.6B-Base', help='Model name.')
 @click.option('--torch-dtype', default='bfloat16', help='Weight type to load.')
-@click.option('--fp8-recipe', default=None, help='FP8 recipe')
-@click.option('--torch-compile', is_flag=True, help='Torch compile')
+@click.option('--fp8-recipe', default=None, help='FP8 recipe.')
+@click.option('--flex-attention', is_flag=True, help='Use Flex Attention.')
+@click.option('--torch-compile', is_flag=True, help='Torch compile.')
 @click.option('--train-dataset', default='multipacking', help='Train dataset folder.')
 @click.option('--checkpoint-folder', default='checkpoint', help='Checkpoint folder.')
 @click.option('--max-checkpoints', default=5, help='Max checkpoints to save.')
@@ -154,11 +198,13 @@ def collator(batch):
 @click.option('--batch-size', default=5, help='batch size.')
 @click.option('--grad-accumulation', default=4, help='gradient accumulation.')
 @click.option('--device-flops', default='2.25e15', help='device flops.')
+@click.option('--dummy-step', default=None, help='dummy steps.')
 @click.command()
 def main(
     model_name, 
     torch_dtype, 
     fp8_recipe, 
+    flex_attention,
     torch_compile, 
     train_dataset, 
     checkpoint_folder, 
@@ -167,6 +213,7 @@ def main(
     batch_size,
     grad_accumulation,
     device_flops,
+    dummy_step,
 ):
     device = torch.device("cuda", 0)
     os.makedirs(checkpoint_folder, exist_ok = True)
@@ -192,19 +239,42 @@ def main(
     else:
         raise ValueError('FP8 recipe not supported.')
 
+    if flex_attention:
+        attn_implementation = 'flex_attention'
+    else:
+        attn_implementation = 'flash_attention_2'
+
     model = Model.from_pretrained(
         model_name, 
-        attn_implementation='flash_attention_2',
+        attn_implementation=attn_implementation,
         torch_dtype=torch_dtype,
     )
     if fp8_recipe is not None:
         with torch.no_grad():
             convert_model(model)
+
+    def autocast_forward(model_forward):
+        def forward(self, *args, **kwargs):
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=True):
+                if fp8_recipe is not None:
+                    with te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe):
+                        return model_forward(*args, **kwargs)
+                else:
+                    return model_forward(*args, **kwargs)
+        forward.__wrapped__ = model_forward
+        return forward
+    
+    new_forward = autocast_forward(model.forward)
+    if hasattr(model.forward, "__func__"):
+        model.forward = MethodType(new_forward, model)
+    else:
+        model.forward = new_forward
+
     _ = model.to(device)
     if torch_compile:
         model = torch.compile(model)
 
-    train_dataset = Dataset(train_dataset)
+    train_dataset = Dataset(train_dataset, flex_attention=flex_attention)
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -217,7 +287,7 @@ def main(
     optim = torch.optim.AdamW(model.parameters(), lr=learning_rate, fused=True)
     scheduler = get_wsd_schedule(optim, warmup_steps, int(total_steps * 0.2), num_training_steps=total_steps)
 
-    step = 1
+    step = 0
     try:
         ckpts = sorted(glob(os.path.join(checkpoint_folder, f"checkpoint_*.pt")), key=os.path.getmtime)
         ckpt = torch.load(ckpts[-1], map_location=device)
@@ -253,15 +323,10 @@ def main(
 
         for b in batches:
             for k in b.keys():
-                b[k] = b[k].to(device, non_blocking=True)
-
-            with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=True):
-                if fp8_recipe is not None:
-                    with te.fp8_autocast(enabled=True, fp8_recipe=fp8_recipe):
-                        out = model(**b)
-                else:
-                    out = model(**b)
-            
+                if isinstance(b[k], torch.Tensor):
+                    b[k] = b[k].to(device, non_blocking=True)
+                
+            out = model(**b)
             loss = out["loss"] / grad_accumulation
             loss.backward()
 
@@ -274,23 +339,25 @@ def main(
         t1 = time.time()
         dt = t1 - t0
 
-        flops_per_sec = num_flops_per_token * len(batches) / dt
-        mfu = 100 * flops_per_sec / 2.25e15
+        throughput_per_sec = len(batches) * 4096 / dt
+        flops_per_sec = num_flops_per_token * throughput_per_sec
+        mfu = 100 * flops_per_sec / device_flops
 
-        if step % log_interval == 0:
+        if (step + 1) % log_interval == 0:
             scalar_dict = {
                 "grad_norm": grad_norm,
                 "lr_g": scheduler.get_last_lr()[0],
                 "loss": loss.item() * grad_accumulation,
                 "global_step": step,
                 "mfu": mfu,
+                "throughput_per_sec": throughput_per_sec,
             }
             try:
                 wandb.log(scalar_dict)
             except:
                 pass
         
-        if step % save_interval == 0:
+        if (step + 1) % save_interval == 0:
             ckpt = {
                 "model": model.state_dict(),
                 "optim": optim.state_dict(),
@@ -308,6 +375,10 @@ def main(
         
         step += 1
         pbar.update(1)
+
+        if dummy_step is not None:
+            if step >= int(dummy_step):
+                break
 
 if __name__ == '__main__':
     main()
