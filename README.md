@@ -1,6 +1,6 @@
 # small-malaysian-lm-B200
 
-We want to compare how good Qwen3-4B-Base using B200 to continue pretraining on Malaysian multi-lingual corpus on different mixed precision training with proper truncated multi-packing.
+We want to compare how good Qwen3-1.7B-Base using B200 to continue pretraining on Malaysian multi-lingual corpus on different mixed precision training with proper truncated multi-packing.
 
 ## Manipulated variables
 
@@ -30,6 +30,24 @@ We want to compare,
 5. https://github.com/apple/ml-cross-entropy Kahan summation FP32.
 6. Single GPU, feel free to add DDP by your own.
 7. Gradient checkpointing.
+
+## How to
+
+1. Prepare the data, run [prepare-dataset.ipynb](prepare-dataset.ipynb).
+
+Or you can just clone,
+
+```bash
+hf download Scicom-intl/mosaic-ms-wikipedia-2023-10-01 --repo-type=dataset --local-dir=./multipacking
+```
+
+2. Run the finetuning,
+
+- FP32 weight, BF16 activation,
+
+```bash
+bash b200-fp32-bf16.sh
+```
 
 ## WanDB
 
