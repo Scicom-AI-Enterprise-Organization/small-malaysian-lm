@@ -33,7 +33,7 @@ We want to compare,
 
 ## How to
 
-1. Prepare the data, run [prepare-dataset.ipynb](prepare-dataset.ipynb).
+1. Prepare the data, run [notebook/prepare-dataset.ipynb](notebook/prepare-dataset.ipynb).
 
 Or you can just clone,
 
