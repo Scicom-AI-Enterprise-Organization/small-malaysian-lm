@@ -1,6 +1,6 @@
 # small-malaysian-lm-B200
 
-We want to compare how good Qwen3-4B-Base to continue pretraining on Malaysian multi-lingual corpus on different mixed precision training with proper truncated multi-packing.
+We want to compare how good Qwen3-4B-Base using B200 to continue pretraining on Malaysian multi-lingual corpus on different mixed precision training with proper truncated multi-packing.
 
 ## Manipulated variables
 
