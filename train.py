@@ -111,6 +111,7 @@ def main(model_name, torch_dtype, fp8, train_dataset, checkpoint_folder, max_che
     epoch = 1
     batch_size = 4
     grad_accumulation = 8
+    save_interval = 100
 
     fp8_recipe = recipe.DelayedScaling(margin=0, fp8_format=recipe.Format.E4M3)
     model = Model.from_pretrained(model_name, torch_dtype=torch_dtype)
@@ -192,7 +193,7 @@ def main(model_name, torch_dtype, fp8, train_dataset, checkpoint_folder, max_che
             scalar_dict = {
                 "grad_norm": grad_norm,
                 "lr_g": scheduler.get_last_lr()[0],
-                "loss": loss,
+                "loss": loss.item() * grad_accumulation,
                 "global_step": step,
             }
             try:
