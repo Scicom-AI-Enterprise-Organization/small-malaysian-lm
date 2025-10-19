@@ -202,6 +202,7 @@ def main(
         attn_implementation='flash_attention_2',
         torch_dtype=torch_dtype,
     )
+    model.config.use_cache = False
     if fp8_recipe is not None:
         with torch.no_grad():
             convert_model(model)
@@ -281,7 +282,7 @@ def main(
                     if isinstance(b[k], torch.Tensor):
                         b[k] = b[k].to(device, non_blocking=True)
                     
-                out = model(**b)
+                out = model(**b, use_cache=False)
                 loss = out["loss"] / grad_accumulation
                 loss.backward()
 
