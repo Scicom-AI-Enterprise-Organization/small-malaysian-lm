@@ -29,7 +29,6 @@ We want to compare,
 4. Because we are using B200s, we are only able to do BF16 Flash Attention 2 v2.8.3 out of the box for now.
 5. https://github.com/apple/ml-cross-entropy Kahan summation FP32.
 6. Single GPU, feel free to add DDP by your own.
-7. Gradient checkpointing.
 
 ## How to
 
