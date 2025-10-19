@@ -10,3 +10,4 @@ pip3 install multiprocess
 pip3 install --no-build-isolation transformer_engine[pytorch]
 FLASH_ATTENTION_SKIP_CUDA_BUILD="TRUE" pip3 install flash-attn==2.8.3 --no-build-isolation
 pip3 install git+https://github.com/apple/ml-cross-entropy
+pip3 install liger-kernel==0.6.2

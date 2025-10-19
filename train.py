@@ -8,13 +8,13 @@ import os
 import time
 from glob import glob
 from types import MethodType
+from contextlib import nullcontext
 import torch.distributed as dist
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-from torch.nn.attention.flex_attention import create_block_mask
 from torch.utils.data import Dataset, DataLoader
 from transformer_engine import pytorch as te
 from transformer_engine.common import recipe
+from transformer_engine.pytorch.cross_entropy import parallel_cross_entropy
 from transformers import (
     set_seed,
     get_wsd_schedule,
@@ -24,10 +24,19 @@ from accelerate import skip_first_batches
 from streaming import LocalDataset
 from streaming.base.format.mds.encodings import Encoding, _encodings
 from cut_cross_entropy import linear_cross_entropy
+from liger_kernel.transformers import apply_liger_kernel_to_qwen3
 from tqdm import tqdm
 import numpy as np
 import click
 import wandb
+
+apply_liger_kernel_to_qwen3(
+    rope=True,
+    swiglu=True,
+    rms_norm=True,
+    cross_entropy=False,
+    fused_linear_cross_entropy=True,
+)
 
 def convert_model(model):
     """
@@ -55,37 +64,6 @@ def convert_model(model):
         else:
             convert_model(module)
 
-def causal_mask(b, h, q_idx, kv_idx):
-    return q_idx >= kv_idx
-
-def _offsets_to_doc_ids_tensor(offsets):
-    device = offsets.device
-    offsets = offsets[offsets != -1]
-    counts = offsets[1:] - offsets[:-1]
-    return torch.repeat_interleave(
-        torch.arange(len(counts), device=device, dtype=torch.int32), counts
-    )
-
-def length_to_offsets(lengths, device):
-    offsets = [0]
-    offsets.extend(lengths)
-    offsets = torch.tensor(offsets, device=device, dtype=torch.int32)
-    offsets = torch.cumsum(offsets, dim=-1)
-    return offsets
-
-def generate_doc_mask_mod(offsets):
-    
-    offsets = pad_sequence(offsets, batch_first = True, padding_value = -1)
-    docs = [_offsets_to_doc_ids_tensor(offsets[i]) for i in range(offsets.shape[0])]
-    docs = torch.stack(docs, 0)
-    
-    def document_causal_mask(b, h, q_idx, kv_idx):
-        causal_mask = q_idx >= kv_idx
-        document_mask = docs[b, q_idx] == docs[b, kv_idx]
-        return causal_mask & document_mask
-    
-    return document_causal_mask
-
 class Model(Qwen3ForCausalLM):
     def __init__(self, config):
         super().__init__(config)
@@ -100,44 +78,6 @@ class Model(Qwen3ForCausalLM):
         l, h, q = self.config.num_hidden_layers, self.config.num_attention_heads, self.config.head_dim
         num_flops_per_token = 6 * (nparams - nparams_embedding) + 12 * l * h * q * t
         return num_flops_per_token
-        
-    def forward(self, input_ids, attention_mask=None, position_ids=None, labels=None, num_items_in_batch=None, **kwargs):
-        if self.config._attn_implementation == 'flex_attention':
-            attention_mask = kwargs.pop('cu_seq_lens_q')
-            kwargs.pop('cu_seq_lens_k')
-            kwargs.pop('max_length_q')
-            kwargs.pop('max_length_k')
-            seq_len = position_ids.shape[-1]
-            device = position_ids.device
-            document_causal_mask = generate_doc_mask_mod(attention_mask[None])
-            attention_mask = create_block_mask(
-                document_causal_mask, None, None, seq_len, seq_len, device, _compile = True)
-        super_out = self.model.forward(
-            input_ids = input_ids, 
-            position_ids = position_ids, 
-            attention_mask = attention_mask, 
-            output_hidden_states = True,
-            **kwargs,
-        )
-        if labels is not None:
-            embeddings = super_out.last_hidden_state
-            
-            reduction = "sum" if num_items_in_batch is not None else "mean"
-            
-            loss = linear_cross_entropy(
-                embeddings, 
-                self.lm_head.weight, 
-                labels, 
-                shift=True,
-                impl="cce_kahan_full_c",
-                reduction=reduction,
-            )
-            if reduction == "sum":
-                if torch.is_tensor(num_items_in_batch):
-                    num_items_in_batch = num_items_in_batch.to(loss.device)
-                loss = loss / num_items_in_batch
-            return {'loss': loss}
-        return super_out
 
 class UInt32(Encoding):
     def encode(self, obj) -> bytes:
@@ -149,7 +89,7 @@ class UInt32(Encoding):
 _encodings['uint32'] = UInt32
 
 class Dataset(Dataset):
-    def __init__(self, folder, flex_attention=False):
+    def __init__(self, folder):
         self.dataset = LocalDataset(local=folder)
     
     def __getitem__(self, idx):
@@ -193,7 +133,6 @@ def collator(batch):
 @click.option('--model-name', default='Qwen3-0.6B-Base', help='Model name.')
 @click.option('--torch-dtype', default='bfloat16', help='Weight type to load.')
 @click.option('--fp8-recipe', default=None, help='FP8 recipe.')
-@click.option('--flex-attention', is_flag=True, help='Use Flex Attention.')
 @click.option('--torch-compile', is_flag=True, help='Torch compile.')
 @click.option('--train-dataset', default='multipacking', help='Train dataset folder.')
 @click.option('--checkpoint-folder', default='checkpoint', help='Checkpoint folder.')
@@ -203,12 +142,12 @@ def collator(batch):
 @click.option('--grad-accumulation', default=4, help='gradient accumulation.')
 @click.option('--device-flops', default='2.25e15', help='device flops.')
 @click.option('--dummy-step', default=None, help='dummy steps.')
+@click.option('--torch-profiling', is_flag=True, help='Profile using PyTorch profiling.')
 @click.command()
 def main(
     model_name, 
     torch_dtype, 
     fp8_recipe, 
-    flex_attention,
     torch_compile, 
     train_dataset, 
     checkpoint_folder, 
@@ -218,6 +157,7 @@ def main(
     grad_accumulation,
     device_flops,
     dummy_step,
+    torch_profiling,
 ):
     device = torch.device("cuda", 0)
     os.makedirs(checkpoint_folder, exist_ok = True)
@@ -231,6 +171,20 @@ def main(
     epoch = 1
     save_interval = 1000
     max_ckpt = 5
+
+    if torch_profiling:
+        profiler = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ],
+            record_shapes=True,
+            profile_memory=True,
+            with_flops=True,
+            with_modules=True,
+        )
+    else:
+        profiler = nullcontext()
     
     if fp8_recipe == 'delayedscaling':
         fp8_recipe = recipe.DelayedScaling(margin=0, fp8_format=recipe.Format.E4M3)
@@ -243,14 +197,9 @@ def main(
     else:
         raise ValueError('FP8 recipe not supported.')
 
-    if flex_attention:
-        attn_implementation = 'flex_attention'
-    else:
-        attn_implementation = 'flash_attention_2'
-
     model = Model.from_pretrained(
         model_name, 
-        attn_implementation=attn_implementation,
+        attn_implementation='flash_attention_2',
         torch_dtype=torch_dtype,
     )
     if fp8_recipe is not None:
@@ -278,7 +227,7 @@ def main(
     if torch_compile:
         model = torch.compile(model)
 
-    train_dataset = Dataset(train_dataset, flex_attention=flex_attention)
+    train_dataset = Dataset(train_dataset)
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -313,77 +262,81 @@ def main(
     num_flops_per_token = model.estimate_flops()
 
     wandb.init()
-    while step < total_steps:
-        batches = []
-        for _ in range(grad_accumulation):
-            try:
-                batch = next(iter_train_loader)
-            except StopIteration:
-                iter_train_loader = iter(train_loader)
-                batch = next(iter_train_loader)
-            batches.append(batch)
-        
-        torch.cuda.synchronize()
-        t0 = time.time()
+    with profiler as prof:
+        while step < total_steps:
+            batches = []
+            for _ in range(grad_accumulation):
+                try:
+                    batch = next(iter_train_loader)
+                except StopIteration:
+                    iter_train_loader = iter(train_loader)
+                    batch = next(iter_train_loader)
+                batches.append(batch)
+            
+            torch.cuda.synchronize()
+            t0 = time.time()
+            
+            for b in batches:
+                for k in b.keys():
+                    if isinstance(b[k], torch.Tensor):
+                        b[k] = b[k].to(device, non_blocking=True)
+                    
+                out = model(**b)
+                loss = out["loss"] / grad_accumulation
+                loss.backward()
 
-        for b in batches:
-            for k in b.keys():
-                if isinstance(b[k], torch.Tensor):
-                    b[k] = b[k].to(device, non_blocking=True)
-                
-            out = model(**b)
-            loss = out["loss"] / grad_accumulation
-            loss.backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optim.step()
+            scheduler.step()
+            optim.zero_grad(set_to_none=True)
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optim.step()
-        scheduler.step()
-        optim.zero_grad(set_to_none=True)
+            torch.cuda.synchronize()
+            t1 = time.time()
+            dt = t1 - t0
 
-        torch.cuda.synchronize()
-        t1 = time.time()
-        dt = t1 - t0
+            throughput_per_sec = len(batches) * batch_size * 4096 / dt
+            flops_per_sec = num_flops_per_token * throughput_per_sec
+            mfu = 100 * flops_per_sec / device_flops
 
-        throughput_per_sec = len(batches) * batch_size * 4096 / dt
-        flops_per_sec = num_flops_per_token * throughput_per_sec
-        mfu = 100 * flops_per_sec / device_flops
+            if (step + 1) % log_interval == 0:
+                scalar_dict = {
+                    "grad_norm": grad_norm,
+                    "lr_g": scheduler.get_last_lr()[0],
+                    "loss": loss.item() * grad_accumulation,
+                    "global_step": step,
+                    "mfu": mfu,
+                    "throughput_per_sec": throughput_per_sec,
+                }
+                try:
+                    wandb.log(scalar_dict)
+                except:
+                    pass
+            
+            if (step + 1) % save_interval == 0:
+                ckpt = {
+                    "model": model.state_dict(),
+                    "optim": optim.state_dict(),
+                    "scheduler": scheduler.state_dict(),
+                    "step": step,
+                }
+                path = os.path.join(checkpoint_folder, f"checkpoint_{step}.pt")
+                torch.save(ckpt, path)
+                print(f'save checkpoint {path}')
+                ckpts = sorted(glob(os.path.join(checkpoint_folder, "checkpoint_*.pt")), key=os.path.getmtime)
+                if len(ckpts) > max_ckpt:
+                    to_delete = ckpts[0]
+                    os.remove(to_delete)
+                    print(f"Deleted old checkpoint: {to_delete}")
+            
+            step += 1
+            pbar.update(1)
 
-        if (step + 1) % log_interval == 0:
-            scalar_dict = {
-                "grad_norm": grad_norm,
-                "lr_g": scheduler.get_last_lr()[0],
-                "loss": loss.item() * grad_accumulation,
-                "global_step": step,
-                "mfu": mfu,
-                "throughput_per_sec": throughput_per_sec,
-            }
-            try:
-                wandb.log(scalar_dict)
-            except:
-                pass
-        
-        if (step + 1) % save_interval == 0:
-            ckpt = {
-                "model": model.state_dict(),
-                "optim": optim.state_dict(),
-                "scheduler": scheduler.state_dict(),
-                "step": step,
-            }
-            path = os.path.join(checkpoint_folder, f"checkpoint_{step}.pt")
-            torch.save(ckpt, path)
-            print(f'save checkpoint {path}')
-            ckpts = sorted(glob(os.path.join(checkpoint_folder, "checkpoint_*.pt")), key=os.path.getmtime)
-            if len(ckpts) > max_ckpt:
-                to_delete = ckpts[0]
-                os.remove(to_delete)
-                print(f"Deleted old checkpoint: {to_delete}")
-        
-        step += 1
-        pbar.update(1)
-
-        if dummy_step is not None:
-            if step >= int(dummy_step):
-                break
+            if dummy_step is not None:
+                if step >= int(dummy_step):
+                    break
+    
+    if torch_profiling:
+        prof.export_chrome_trace(f'profiling.json')
 
 if __name__ == '__main__':
     main()
