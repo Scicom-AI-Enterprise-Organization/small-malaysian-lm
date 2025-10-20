@@ -192,6 +192,17 @@ def main(
         fp8_recipe = recipe.MXFP8BlockScaling()
     elif fp8_recipe == 'nvfp4':
         fp8_recipe = recipe.NVFP4BlockScaling()
+
+        if torch_dtype == 'float32':
+            _orig_te_linear_forward = te.Linear.forward
+    
+            def _patched_te_linear_forward(self, input, *args, **kwargs):
+                if torch.is_tensor(input) and input.dtype != torch.bfloat16:
+                    input = input.to(torch.bfloat16)
+                return _orig_te_linear_forward(self, input, *args, **kwargs)
+            
+            te.Linear.forward = _patched_te_linear_forward
+        
     elif fp8_recipe is None:
         pass
     else:
