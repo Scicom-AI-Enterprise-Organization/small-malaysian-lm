@@ -37,7 +37,7 @@ We want to compare,
 Or you can just clone,
 
 ```bash
-hf download Scicom-intl/mosaic-ms-wikipedia-2023-10-01 --repo-type=dataset --local-dir=./multipacking
+HF_HUB_ENABLE_HF_TRANSFER=0 hf download Scicom-intl/mosaic-ms-wikipedia-2023-10-01 --repo-type=dataset --local-dir=./multipacking
 ```
 
 2. Run the finetuning,
