@@ -29,6 +29,8 @@ We want to compare,
 4. Because we are using B200s, we are only able to do BF16 Flash Attention 2 v2.8.3 out of the box for now, currently Flash Attention 2 is the fastest based on our benchmarked varlen causal self-attention at [Scicom-AI-Enterprise-Organization/self-attention-benchmark-B200](https://github.com/Scicom-AI-Enterprise-Organization/self-attention-benchmark-B200).
 5. Liger Kernel for `swiglu`, `rms_norm` and `fused_linear_cross_entropy`, **set `rope=True` caused NaN for torch compile**.
 6. Single GPU, feel free to add DDP by your own.
+7. Torch compile but with some broken recompiles limit, still improved MFU.
+8. 1 epoch only.
 
 ## How to
 
@@ -60,10 +62,34 @@ bash b200-fp32-bf16.sh
 bash b200-fp32-delayedscaling-fp8.sh
 ```
 
+- BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation,
+
+```bash
+bash b200-bf16-delayedscaling-fp8.sh
+```
+
 - FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
 
 ```bash
 bash b200-fp32-mxfp8.sh
+```
+
+- BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
+
+```bash
+bash b200-bf16-mxfp8.sh
+```
+
+- FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation,
+
+```bash
+bash b200-fp32-nvfp4.sh
+```
+
+- BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation,
+
+```bash
+bash b200-bf16-nvfp4.sh
 ```
 
 ## WanDB
