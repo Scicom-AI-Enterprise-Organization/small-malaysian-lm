@@ -1,6 +1,5 @@
 pip3 install torch==2.8.0
 pip3 install transformers==4.57.1
-pip3 install accelerate==1.10.1
 pip3 install mosaicml-streaming
 pip3 install datasets
 pip3 install wandb

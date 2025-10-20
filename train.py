@@ -20,7 +20,6 @@ from transformers import (
     get_wsd_schedule,
     Qwen3ForCausalLM,
 )
-from accelerate import skip_first_batches
 from streaming import LocalDataset
 from streaming.base.format.mds.encodings import Encoding, _encodings
 from cut_cross_entropy import linear_cross_entropy
@@ -31,7 +30,7 @@ import click
 import wandb
 
 apply_liger_kernel_to_qwen3(
-    rope=True,
+    rope=False,
     swiglu=True,
     rms_norm=True,
     cross_entropy=False,
@@ -138,6 +137,7 @@ def collator(batch):
 @click.option('--checkpoint-folder', default='checkpoint', help='Checkpoint folder.')
 @click.option('--max-checkpoints', default=5, help='Max checkpoints to save.')
 @click.option('--num-workers', default=5, help='Number of workers for dataloader.')
+@click.option('--prefetch-factor', default=10, help='Prefetch factor for each workers.')
 @click.option('--batch-size', default=5, help='batch size.')
 @click.option('--grad-accumulation', default=4, help='gradient accumulation.')
 @click.option('--device-flops', default='2.25e15', help='device flops.')
@@ -153,6 +153,7 @@ def main(
     checkpoint_folder, 
     max_checkpoints, 
     num_workers,
+    prefetch_factor,
     batch_size,
     grad_accumulation,
     device_flops,
@@ -169,7 +170,6 @@ def main(
     learning_rate = 2e-5
     log_interval = 1
     epoch = 1
-    save_interval = 1000
     max_ckpt = 5
 
     if torch_profiling:
@@ -233,9 +233,10 @@ def main(
         train_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        prefetch_factor=10,
+        prefetch_factor=prefetch_factor,
         pin_memory=True,
         collate_fn=collator,
+        shuffle=True,
     )
 
     total_steps = epoch * len(train_loader)
@@ -243,20 +244,6 @@ def main(
     scheduler = get_wsd_schedule(optim, warmup_steps, int(total_steps * 0.2), num_training_steps=total_steps)
 
     step = 0
-    try:
-        ckpts = sorted(glob(os.path.join(checkpoint_folder, f"checkpoint_*.pt")), key=os.path.getmtime)
-        ckpt = torch.load(ckpts[-1], map_location=device)
-        model.load_state_dict(ckpt["model"])
-        optim.load_state_dict(ckpt["optim"])
-        scheduler.load_state_dict(ckpt["scheduler"])
-        step = ckpt["step"]
-        print(f'loaded checkpoint {ckpts[-1]}')
-    except Exception as e:
-        print(e)
-
-    steps_trained_in_current_epoch = step % len(train_loader)
-    train_loader = skip_first_batches(train_loader, steps_trained_in_current_epoch)
-
     pbar = tqdm(total=total_steps, initial=step)
     iter_train_loader = iter(train_loader)
 
@@ -312,22 +299,6 @@ def main(
                     wandb.log(scalar_dict)
                 except:
                     pass
-            
-            if (step + 1) % save_interval == 0:
-                ckpt = {
-                    "model": model.state_dict(),
-                    "optim": optim.state_dict(),
-                    "scheduler": scheduler.state_dict(),
-                    "step": step,
-                }
-                path = os.path.join(checkpoint_folder, f"checkpoint_{step}.pt")
-                torch.save(ckpt, path)
-                print(f'save checkpoint {path}')
-                ckpts = sorted(glob(os.path.join(checkpoint_folder, "checkpoint_*.pt")), key=os.path.getmtime)
-                if len(ckpts) > max_ckpt:
-                    to_delete = ckpts[0]
-                    os.remove(to_delete)
-                    print(f"Deleted old checkpoint: {to_delete}")
             
             step += 1
             pbar.update(1)

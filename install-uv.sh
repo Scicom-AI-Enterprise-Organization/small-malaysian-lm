@@ -4,7 +4,6 @@ uv venv --python 3.12 --allow-existing
 source .venv/bin/activate
 uv pip install torch==2.8.0
 uv pip install transformers
-uv pip install accelerate
 uv pip install ipython ipykernel
 uv pip install mosaicml-streaming
 uv pip install datasets
