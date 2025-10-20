@@ -1,6 +1,6 @@
 import torch
 
-torch._dynamo.config.recompile_limit = 64
+torch._dynamo.config.recompile_limit = 128
 torch._dynamo.config.allow_unspec_int_on_nn_module = True
 
 import json
@@ -206,6 +206,7 @@ def main(
     if fp8_recipe is not None:
         with torch.no_grad():
             convert_model(model)
+            print(fp8_recipe, model)
 
     def autocast_forward(model_forward):
         def forward(self, *args, **kwargs):

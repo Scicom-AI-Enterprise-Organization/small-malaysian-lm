@@ -8,12 +8,12 @@ We want to compare,
 
 - FP32 weight, BF16 activation.
 - BF16 weight, BF16 activation.
-- FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, FP8 activation.
-- BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, FP8 activation.
-- FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, FP8 activation.
-- BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, FP8 activation.
-- FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, FP8 activation.
-- BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, FP8 activation.
+- FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation.
+- BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation.
+- FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
+- BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
+- FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
+- BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
 
 ## Why we no longer try to train on 5090
 
@@ -27,7 +27,7 @@ We want to compare,
 2. 100 warmup with 2e-5 warmup-stable-decay schedule.
 3. Fused AdamW optimizer.
 4. Because we are using B200s, we are only able to do BF16 Flash Attention 2 v2.8.3 out of the box for now.
-5. https://github.com/apple/ml-cross-entropy Kahan summation FP32.
+5. Liger Kernel for `swiglu`, `rms_norm` and `fused_linear_cross_entropy`, **set `rope=True` caused NaN for torch compile**.
 6. Single GPU, feel free to add DDP by your own.
 
 ## How to
