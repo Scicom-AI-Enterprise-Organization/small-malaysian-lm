@@ -26,7 +26,7 @@ We want to compare,
 1. 131072 token batch size.
 2. 100 warmup with 2e-5 warmup-stable-decay schedule.
 3. Fused AdamW optimizer.
-4. Because we are using B200s, we are only able to do BF16 Flash Attention 2 v2.8.3 out of the box for now.
+4. Because we are using B200s, we are only able to do BF16 Flash Attention 2 v2.8.3 out of the box for now, currently Flash Attention 2 is the fastest based on our benchmarked varlen causal self-attention at [Scicom-AI-Enterprise-Organization/self-attention-benchmark-B200](https://github.com/Scicom-AI-Enterprise-Organization/self-attention-benchmark-B200).
 5. Liger Kernel for `swiglu`, `rms_norm` and `fused_linear_cross_entropy`, **set `rope=True` caused NaN for torch compile**.
 6. Single GPU, feel free to add DDP by your own.
 
@@ -46,6 +46,24 @@ HF_HUB_ENABLE_HF_TRANSFER=0 hf download Scicom-intl/mosaic-ms-wikipedia-2023-10-
 
 ```bash
 bash b200-fp32-bf16.sh
+```
+
+- BF16 weight, BF16 activation,
+
+```bash
+bash b200-fp32-bf16.sh
+```
+
+- FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation,
+
+```bash
+bash b200-fp32-delayedscaling-fp8.sh
+```
+
+- FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
+
+```bash
+bash b200-fp32-mxfp8.sh
 ```
 
 ## WanDB
