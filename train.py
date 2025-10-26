@@ -19,6 +19,7 @@ from transformers import (
     set_seed,
     get_wsd_schedule,
     Qwen3ForCausalLM,
+    AutoConfig,
 )
 from streaming import LocalDataset
 from streaming.base.format.mds.encodings import Encoding, _encodings
@@ -29,15 +30,7 @@ import numpy as np
 import click
 import wandb
 
-apply_liger_kernel_to_qwen3(
-    rope=False,
-    swiglu=True,
-    rms_norm=True,
-    cross_entropy=False,
-    fused_linear_cross_entropy=True,
-)
-
-def convert_model(model):
+def convert_model(model, include_lm_head=False, include_layernorm=False, include_rmsnorm=False):
     """
     Recursively converts the linear and layernorm layers of a model to their `transformers_engine` counterpart.
     Modified from https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/transformer_engine.py#L26
@@ -45,7 +38,7 @@ def convert_model(model):
     """
 
     for name, module in model.named_children():
-        if "lm_head" in name:
+        if not include_lm_head and "lm_head" in name:
             continue
         if isinstance(module, nn.Linear):
             has_bias = module.bias is not None
@@ -60,8 +53,19 @@ def convert_model(model):
                 te_module.bias.copy_(module.bias)
 
             setattr(model, name, te_module)
+        elif include_layernorm and isinstance(module, nn.LayerNorm):
+            has_bias = module.bias is not None
+            te_module = te.LayerNorm(module.normalized_shape[0], eps=module.eps, params_dtype=module.weight.dtype)
+            te_module.weight.copy_(module.weight)
+            if has_bias:
+                te_module.bias.copy_(module.bias)
         else:
-            convert_model(module)
+            convert_model(
+                module, 
+                include_lm_head=include_lm_head,
+                include_layernorm=include_layernorm,
+                include_rmsnorm=include_rmsnorm,
+            )
 
 class Model(Qwen3ForCausalLM):
     def __init__(self, config):
@@ -132,6 +136,9 @@ def collator(batch):
 @click.option('--model-name', default='Qwen3-0.6B-Base', help='Model name.')
 @click.option('--torch-dtype', default='bfloat16', help='Weight type to load.')
 @click.option('--fp8-recipe', default=None, help='FP8 recipe.')
+@click.option('--include-lm-head', is_flag=True, help='Include LM head for low precision training.')
+@click.option('--include-layernorm', is_flag=True, help='Include TA LayerNorm for low precision training.')
+@click.option('--include-rmsnorm', is_flag=True, help='Include TA RMSNorm for low precision training.')
 @click.option('--torch-compile', is_flag=True, help='Torch compile.')
 @click.option('--train-dataset', default='multipacking', help='Train dataset folder.')
 @click.option('--checkpoint-folder', default='checkpoint', help='Checkpoint folder.')
@@ -148,6 +155,9 @@ def main(
     model_name, 
     torch_dtype, 
     fp8_recipe, 
+    include_lm_head,
+    include_layernorm,
+    include_rmsnorm,
     torch_compile, 
     train_dataset, 
     checkpoint_folder, 
@@ -160,6 +170,19 @@ def main(
     dummy_step,
     torch_profiling,
 ):
+    if include_rmsnorm:
+        rms_norm = True
+    else:
+        rms_norm = False
+
+    apply_liger_kernel_to_qwen3(
+        rope=False,
+        swiglu=True,
+        rms_norm=rms_norm,
+        cross_entropy=False,
+        fused_linear_cross_entropy=True,
+    )
+
     device = torch.device("cuda", 0)
     os.makedirs(checkpoint_folder, exist_ok = True)
     device_flops = float(device_flops)
@@ -207,16 +230,32 @@ def main(
         pass
     else:
         raise ValueError('FP8 recipe not supported.')
+    
+    config = AutoConfig.from_pretrained(model_name)
+    original_tie_word_embeddings = getattr(config, 'tie_word_embeddings')
+    if original_tie_word_embeddings and include_lm_head and fp8_recipe is not None:
+        tie_word_embeddings = False
+    else:
+        tie_word_embeddings = original_tie_word_embeddings
 
     model = Model.from_pretrained(
         model_name, 
         attn_implementation='flash_attention_2',
         torch_dtype=torch_dtype,
+        tie_word_embeddings=tie_word_embeddings,
     )
+    if original_tie_word_embeddings and not tie_word_embeddings:
+        model.lm_head.weight.data = model.model.embed_tokens.weight.data.clone()
+
     model.config.use_cache = False
     if fp8_recipe is not None:
         with torch.no_grad():
-            convert_model(model)
+            convert_model(
+                model, 
+                include_lm_head=include_lm_head, 
+                include_layernorm=include_layernorm,
+                include_rmsnorm=include_rmsnorm,
+            )
             print(fp8_recipe, model)
 
     def autocast_forward(model_forward):
@@ -260,7 +299,7 @@ def main(
     iter_train_loader = iter(train_loader)
 
     num_flops_per_token = model.estimate_flops()
-
+    
     wandb.init()
     with profiler as prof:
         while step < total_steps:
