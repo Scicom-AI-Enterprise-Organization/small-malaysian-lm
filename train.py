@@ -250,7 +250,12 @@ def main(
     model.config.use_cache = False
     if fp8_recipe is not None:
         with torch.no_grad():
-            convert_model(model, )
+            convert_model(
+                model, 
+                include_lm_head=include_lm_head, 
+                include_layernorm=include_layernorm,
+                include_rmsnorm=include_rmsnorm,
+            )
             print(fp8_recipe, model)
 
     def autocast_forward(model_forward):

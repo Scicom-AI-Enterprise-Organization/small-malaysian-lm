@@ -14,6 +14,12 @@ We want to compare,
 6. BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
 7. FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
 8. BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
+9. FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
+10. BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
+11. FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
+12. BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
+13. FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
+14. BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
 
 ## Why we no longer try to train on 5090
 
