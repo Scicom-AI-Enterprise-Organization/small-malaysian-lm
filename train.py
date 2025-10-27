@@ -21,6 +21,7 @@ from transformers import (
     Qwen3ForCausalLM,
     AutoConfig,
 )
+from transformers.models.qwen3.modeling_qwen3 import Qwen3RMSNorm
 from streaming import LocalDataset
 from streaming.base.format.mds.encodings import Encoding, _encodings
 from cut_cross_entropy import linear_cross_entropy
@@ -59,6 +60,13 @@ def convert_model(model, include_lm_head=False, include_layernorm=False, include
             te_module.weight.copy_(module.weight)
             if has_bias:
                 te_module.bias.copy_(module.bias)
+                
+            setattr(model, name, te_module)
+        elif include_rmsnorm and isinstance(module, Qwen3RMSNorm):
+            te_module = te.RMSNorm(module.weight.shape[0], eps=module.variance_epsilon, params_dtype=module.weight.dtype)
+            te_module.weight.copy_(module.weight)
+
+            setattr(model, name, te_module)
         else:
             convert_model(
                 module, 
@@ -171,9 +179,9 @@ def main(
     torch_profiling,
 ):
     if include_rmsnorm:
-        rms_norm = True
-    else:
         rms_norm = False
+    else:
+        rms_norm = True
 
     apply_liger_kernel_to_qwen3(
         rope=False,
