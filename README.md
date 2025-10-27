@@ -8,18 +8,24 @@ We want to compare,
 
 1. FP32 weight, BF16 activation.
 2. BF16 weight, BF16 activation.
-3. FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation.
-4. BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation.
-5. FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
-6. BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
-7. FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
-8. BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
-9. FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
-10. BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
-11. FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
-12. BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
-13. FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
-14. BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
+3. FP32 weight, all linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation.
+4. BF16 weight, all linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation.
+5. FP32 weight, all linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
+6. BF16 weight, all linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation.
+7. FP32 weight, all linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
+8. BF16 weight, all linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation.
+9. FP32 weight, all linear layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
+10. BF16 weight, all linear layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
+11. FP32 weight, all linear layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
+12. BF16 weight, all linear layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
+13. FP32 weight, all linear layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
+14. BF16 weight, all linear layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
+15. FP32 weight, all linear, layer norm and rms norm layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
+16. BF16 weight, all linear, layer norm and rms norm layers converted to TransformerEngine DelayedScaling recipe FP8, BF16 activation.
+17. FP32 weight, all linear, layer norm and rms norm layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
+18. BF16 weight, all linear, layer norm and rms norm layers converted to TransformerEngine MXFP8 recipe FP8, BF16 activation.
+19. FP32 weight, all linear, layer norm and rms norm layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
+20. BF16 weight, all linear, layer norm and rms norm layers converted to TransformerEngine NVFP4 recipe FP4, BF16 activation.
 
 ## Why we no longer try to train on 5090
 
@@ -63,37 +69,37 @@ bash b200-fp32-bf16.sh
 bash b200-fp32-bf16.sh
 ```
 
-- FP32 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation,
+- FP32 weight, all linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation,
 
 ```bash
 bash b200-fp32-delayedscaling-fp8.sh
 ```
 
-- BF16 weight, All linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation,
+- BF16 weight, all linear layers converted to TransformerEngine DelayedScaling recipe FP8 except logits, BF16 activation,
 
 ```bash
 bash b200-bf16-delayedscaling-fp8.sh
 ```
 
-- FP32 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
+- FP32 weight, all linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
 
 ```bash
 bash b200-fp32-mxfp8.sh
 ```
 
-- BF16 weight, All linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
+- BF16 weight, all linear layers converted to TransformerEngine MXFP8 recipe FP8 except logits, BF16 activation,
 
 ```bash
 bash b200-bf16-mxfp8.sh
 ```
 
-- FP32 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation,
+- FP32 weight, all linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation,
 
 ```bash
 bash b200-fp32-nvfp4.sh
 ```
 
-- BF16 weight, All linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation,
+- BF16 weight, all linear layers converted to TransformerEngine NVFP4 recipe FP4 except logits, BF16 activation,
 
 ```bash
 bash b200-bf16-nvfp4.sh
