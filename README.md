@@ -65,9 +65,34 @@ bash b200-fp32-bf16.sh
 
 We also recorded MFU and Throughput per second, WanDB project at https://wandb.ai/aies-scicom-scicom-ai/small-malaysian-lm
 
-<img src="pics/wandb2.png" width="50%">
+<img src="pics/wandb2.pngwandb.png" width="50%">
 
 We also dumped all the records from WanDB, [wandb-dump.zip](wandb-dump.zip).
+
+## Final results
+
+| #  | Config                                                                    | MFU (%) | Throughput (tokens/s) | Loss   | Memory Utilization (%) |
+| -- | ------------------------------------------------------------------------- | ------- | --------------------- | ------ | ---------------------- |
+| 1  | **FP32 weight, BF16 activation**                                          | 36.01   | 71,851.17             | **1.3667** | 67.91                  |
+| 2  | **BF16 weight, BF16 activation**                                          | 38.28   | 76,380.13             | 1.8192 | 53.66                  |
+| 3  | **FP32 weight, FP8 (DelayedScaling, except logits), BF16 activation**     | 39.68   | 79,174.49             | 1.3801 | 69.02                  |
+| 4  | **BF16 weight, FP8 (DelayedScaling, except logits), BF16 activation**     | 47.80   | 95,387.86             | 1.7431 | 56.14                  |
+| 5  | **FP32 weight, FP8 (MXFP8, except logits), BF16 activation**              | 38.12   | 76,064.93             | 1.3782 | 67.66                  |
+| 6  | **BF16 weight, FP8 (MXFP8, except logits), BF16 activation**              | 45.70   | 91,203.36             | 1.7405 | 58.79                  |
+| 7  | **FP32 weight, FP4 (NVFP4, except logits), BF16 activation**              | 38.46   | 76,740.59             | 1.4768 | 62.53                  |
+| 8  | **BF16 weight, FP4 (NVFP4, except logits), BF16 activation**              | 46.04   | 91,883.08             | 1.8853 | 52.44                  |
+| 9  | **FP32 weight, FP8 (DelayedScaling, all linear layers), BF16 activation** | 45.26   | 77,487.93             | 1.4105 | 70.88                  |
+| 10 | **BF16 weight, FP8 (DelayedScaling, all linear layers), BF16 activation** | 52.65   | 90,138.03             | 1.7542 | 60.28                  |
+| 11 | **FP32 weight, FP8 (MXFP8, all linear layers), BF16 activation**          | 41.53   | 71,109.2              | 1.4017 | 67.66                  |
+| 12 | **BF16 weight, FP8 (MXFP8, all linear layers), BF16 activation**          | 49.12   | 84,073.86             | 1.7525 | 58.79                  |
+| 13 | **FP32 weight, FP4 (NVFP4, all linear layers), BF16 activation**          | 43.99   | 75,308.72             | 1.8067 | 66.1                   |
+| 14 | **BF16 weight, FP4 (NVFP4, all linear layers), BF16 activation**          | 51.46   | 88,110.51             | 2.0097 | 55.55                  |
+| 15 | **FP32 weight, FP8 (DelayedScaling, all linear + norm), BF16 activation** | 54.21   | 92,814.44             | 1.4126 | 68.36                  |
+| 16 | **BF16 weight, FP8 (DelayedScaling, all linear + norm), BF16 activation** | **62.38**   | **106,804.84**            | 1.7554 | 60.91                  |
+| 17 | **FP32 weight, FP8 (MXFP8, all linear + norm), BF16 activation**          | 50.42   | 86,315.34             | 1.4042 | 71.17                  |
+| 18 | **BF16 weight, FP8 (MXFP8, all linear + norm), BF16 activation**          | 57.82   | 98,994.34             | 1.7535 | 64.13                  |
+| 19 | **FP32 weight, FP4 (NVFP4, all linear + norm), BF16 activation**          | 49.27   | 84,352.77             | 1.8338 | 64.52                  |
+| 20 | **BF16 weight, FP4 (NVFP4, all linear + norm), BF16 activation**          | 61.02   | 104,467.33            | 2.0115 | 55.21                  |
 
 ### Conclusion
 
