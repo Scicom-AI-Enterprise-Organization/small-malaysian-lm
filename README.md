@@ -65,7 +65,7 @@ bash b200-fp32-bf16.sh
 
 We also recorded MFU and Throughput per second, WanDB project at https://wandb.ai/aies-scicom-scicom-ai/small-malaysian-lm
 
-<img src="pics/wandb2.pngwandb.png" width="50%">
+<img src="pics/wandb2.png" width="50%">
 
 We also dumped all the records from WanDB, [wandb-dump.zip](wandb-dump.zip).
 
