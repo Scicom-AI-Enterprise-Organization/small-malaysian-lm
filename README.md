@@ -80,7 +80,7 @@ We also dumped all the records from WanDB, [wandb-dump.zip](wandb-dump.zip).
 | 5  | **FP32 weight, FP8 (MXFP8, except logits), BF16 activation**              | 38.12   | 76,064.93             | 1.3782 | 67.66                  |
 | 6  | **BF16 weight, FP8 (MXFP8, except logits), BF16 activation**              | 45.70   | 91,203.36             | 1.7405 | 58.79                  |
 | 7  | **FP32 weight, FP4 (NVFP4, except logits), BF16 activation**              | 38.46   | 76,740.59             | 1.4768 | 62.53                  |
-| 8  | **BF16 weight, FP4 (NVFP4, except logits), BF16 activation**              | 46.04   | 91,883.08             | 1.8853 | 52.44                  |
+| 8  | **BF16 weight, FP4 (NVFP4, except logits), BF16 activation**              | 46.04   | 91,883.08             | 1.8853 | **52.44**                  |
 | 9  | **FP32 weight, FP8 (DelayedScaling, all linear layers), BF16 activation** | 45.26   | 77,487.93             | 1.4105 | 70.88                  |
 | 10 | **BF16 weight, FP8 (DelayedScaling, all linear layers), BF16 activation** | 52.65   | 90,138.03             | 1.7542 | 60.28                  |
 | 11 | **FP32 weight, FP8 (MXFP8, all linear layers), BF16 activation**          | 41.53   | 71,109.2              | 1.4017 | 67.66                  |
