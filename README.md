@@ -96,6 +96,6 @@ We also dumped all the records from WanDB, [wandb-dump.zip](wandb-dump.zip).
 
 ### Conclusion
 
-1. Generally about TransformerEngine mixed precision, the low precision only happened during computation, it will upcast back later, means that from HBM to SRAM still the actual precision.
+1. Generally about TransformerEngine mixed precision, the NVFP4 precision only happened during computation, it will upcast back later, means that from HBM to SRAM still FP8 precision.
 2. Low precision mixed precision training able to reduced memory footprint and improved the throughput.
 3. Software stacks and kernel libraries (e.g., FlashAttention, Transformer Engine, cuBLAS) are still catching up, not all workloads yet fully exploit the new Blackwell potential.
